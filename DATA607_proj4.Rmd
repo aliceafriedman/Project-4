@@ -1,0 +1,19 @@
+---
+title: 'Project 4: Spam Filter'
+author: "Alice Friedman"
+date: "10/31/2018"
+output: 
+  html_document:
+    theme: lumen
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Setup
+```{r}
+library(tm)
+```

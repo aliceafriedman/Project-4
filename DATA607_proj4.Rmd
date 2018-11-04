@@ -8,7 +8,29 @@ output:
     theme: yeti
     toc: TRUE
     toc_float: TRUE
+    
+
 ---
+<style type="text/css">
+
+body {
+   font-size: 14px;
+}
+table {
+   font-size: 16px;
+}
+code.r {
+  font-size: 11px;
+}
+h1 {
+  margin-top: 2em;
+}
+
+h2 {
+  margin-top: 1em;
+  font-size: 1.5em
+}
+</style>
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
@@ -100,6 +122,7 @@ l_ply(downloadList, extractToFolder, inFolder = "data/emailDownloads")
 #unlink("~/Documents/GitHub/DATA607_Proj4/data/emailDownloads", recursive = TRUE) #now we can delete the folder with the tarred files
 
 ```
+
 #Part 2: Create and clean a "corpus" using tm
 Since there are thousands of emails to choose from, we will choose just a few to create our corpus.
 
@@ -206,9 +229,7 @@ svm_out <- classify_model(container, svm_model)
 randomForest_out <- classify_model(container, randomForest_model)
 ```
 
-
 #Conclusion
-
 ```{r}
 results <- data.frame(correct_label = spam_labels[(N+1):end],
                          maxEntropy = as.character(maxEntropy_out[,1]),
@@ -229,7 +250,7 @@ Summary <- data.frame(SVM, MaxEntropy, RandomForest, row.names = c("Error", "Cor
 names(Summary) <- c("SVM", "Max Entropy", "Random Forest")
 ```
 
-###Accuracy of Three Model Types in Evaluating Ham vs. Spam
+##Accuracy of Three Model Types in Evaluating Ham vs. Spam
 ```{r Summary, echo = FALSE}
 Summary %>% kable() %>% kable_styling(bootstrap_options = "basic")
 ```

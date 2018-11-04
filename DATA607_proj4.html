@@ -228,6 +228,26 @@ div.tocify {
 </div>
 
 
+<style type="text/css">
+
+body {
+   font-size: 14px;
+}
+table {
+   font-size: 16px;
+}
+code.r {
+  font-size: 11px;
+}
+h1 {
+  margin-top: 2em;
+}
+
+h2 {
+  margin-top: 1em;
+  font-size: 1.5em
+}
+</style>
 <div id="overview" class="section level1">
 <h1>Overview</h1>
 <p>The assigned task is to develop a model or set of models, train them to classify a corpus of emails as either “ham” or “spam,” and then evaluate the results.</p>
@@ -456,8 +476,8 @@ RandomForest &lt;- sapply(RandomForest[2], percent)
 
 Summary &lt;- data.frame(SVM, MaxEntropy, RandomForest, row.names = c(&quot;Error&quot;, &quot;Correctly Classified&quot;)) 
 names(Summary) &lt;- c(&quot;SVM&quot;, &quot;Max Entropy&quot;, &quot;Random Forest&quot;)</code></pre>
-<div id="accuracy-of-three-model-types-in-evaluating-ham-vs.spam" class="section level3">
-<h3>Accuracy of Three Model Types in Evaluating Ham vs. Spam</h3>
+<div id="accuracy-of-three-model-types-in-evaluating-ham-vs.spam" class="section level2">
+<h2>Accuracy of Three Model Types in Evaluating Ham vs. Spam</h2>
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <thead>
 <tr>

@@ -1,0 +1,191 @@
+---
+title: 'Project 4: Spam Filter'
+author: "Alice Friedman"
+date: "10/31/2018"
+output: 
+  html_document:
+    theme: lumen
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+remove(list = ls())
+```
+
+#Setup
+Load required libraries
+```{r, warning=FALSE, message=FALSE}
+library(stringr)
+library(dplyr)
+library(tm)
+library(SnowballC)
+library(RTextTools)
+```
+
+#Create corpus
+##Load data into directories
+
+Download each data source into a seperate file. Then, create list of filenames for each type using ```DirSource```.
+```{r}
+spam_source <- dir("~/Documents/GitHub/DATA607_Proj4/data/spam", full.names = TRUE) #list of file paths for spam emails
+ham_source <- dir("~/Documents/GitHub/DATA607_Proj4/data/easy_ham", full.names = TRUE) #list of file paths for ham emails
+
+#create mixed list sample as the test data
+emails <- c(spam_source, ham_source)
+ham_spam <- sample(emails, 1000)
+```
+#Data cleaning
+## What does a raw email look like?
+```{r}
+head(readLines(ham_spam[3]), 25)
+tail(readLines(ham_spam[3]), 25)
+```
+
+##Scrub emails
+```{r}
+Encoding(ham_spam)  <- "UTF-8"
+
+# function to find first blank line in email.
+# using this function to estimate where email body begins.
+find_blank_line <-function(x){
+    for (i in 1:length(x)){
+        if (str_detect(x[i],"^[:space:]*$")){
+            result <- i
+            return(i) 
+        }
+    }
+}
+
+# set up variables for loop
+n <- 0
+if(exists('email_corpus')){rm(email_corpus)} 
+
+# loop through each email
+for (i in 1:length(ham_spam)){
+    tmp <- readLines(ham_spam[i])
+    
+    # remove email header
+    beg <- find_blank_line(tmp)+1
+    end <- length(tmp)
+    tmp <- tmp[beg:end]
+    
+    # remove HTML tags
+    #if(extractHTMLStrip(tmp)!=""){
+    #    tmp <- extractHTMLStrip(tmp)
+    #}
+    
+    # remove URL links, punctuation, numbers, newlines, and misc symbols
+    tmp <- unlist(str_replace_all(tmp,"[[:punct:]]|[[:digit:]]|http\\S+\\s*|\\n|<|>|=|_|-|#|\\$|\\|"," "))
+    
+    # remove extra whitespace
+    tmp <- str_trim(unlist(str_replace_all(tmp,"\\s+"," ")))                           
+    
+    tmp <- str_c(tmp,collapse="")
+    
+    # Add emails to corpus, and include spam/ham category information
+    if (length(tmp)!=0){
+        n <- n + 1
+        tmp_corpus <- Corpus(VectorSource(tmp))
+        ifelse(!exists('email_corpus'), email_corpus <- tmp_corpus, email_corpus <- c(email_corpus,tmp_corpus))
+        meta(email_corpus[[n]], "spam_ham") <- ifelse(str_detect(ham_spam[i],"spam"),1,0)
+        
+    }
+} 
+```
+
+##Create a function to build a corpus from each data source
+```{r}
+#Create function to create vector for each data source
+CorpusCreate <- function(data_source) {
+  connection <- file(data_source[[1]])
+  tmp <- readLines(connection)
+  close.connection(connection)
+  msg <- str_c(tmp, collapse = "")
+  msg_Vector <- c()
+  msg_Vector[1] <- msg
+  #Run for loop across remaining files
+  for (i in 2:length(data_source)){
+  connection <- file(data_source[[i]])
+  tmp <- readLines(connection)
+  close.connection(connection)
+  msg <- str_c(tmp, collapse = " ")
+    if (length(msg) != 0) {
+      msg_Vector <- c(msg_Vector, msg)
+    }
+  }
+  return(msg_Vector)
+}
+```
+
+##Run the function on each data source
+It's worth creating a function because we will want to reuse the code for each data source.
+
+```{r}
+spam <- CorpusCreate(spam_source)
+ham <- CorpusCreate(ham_source)
+```
+
+##Data Cleanup
+Now that we have a corpus for "spam" and "ham", we will want to run some data clean up.
+
+
+```{r}
+#create corpuses
+ham_corpus <-Corpus(VectorSource(ham))
+spam_corpus <- Corpus(VectorSource(spam))
+
+#add label in metadata
+for(i in 1:length(ham_corpus)){
+  meta(ham_corpus[[i]], "spam")<-0
+}
+
+for(i in 1:length(spam_corpus)){
+  meta(spam_corpus[[i]], "spam")<-1
+}
+
+#create final corpus
+final <- c(ham_corpus, spam_corpus)
+```
+
+The following code will deal with the the thorny problem of emojis, which will be read as invalid input into the ```tm_map``` functions. Note: This solution depends on the OS of the user. More solutions for PC users can be found here: https://stackoverflow.com/questions/9637278/r-tm-package-invalid-input-in-utf8towcs
+
+```{r}
+#Convert characters to UTF-8-MAC
+final <- tm_map(final, function(x) iconv(x, to='UTF-8-MAC', sub='byte'))
+
+#Clean data
+final <- tm_map(final, tolower)
+final <- tm_map(final, removePunctuation)
+final <- tm_map(final, removeNumbers)
+final <- tm_map(final, stripWhitespace)
+final<-tm_map(final, removeWords, words = stopwords("en"))
+final<-tm_map(final, stemDocument, language = "english")
+
+#Create a Term-Document Matrix
+tdm <- TermDocumentMatrix(final)
+```
+
+#Create a container
+
+#Create a model
+
+#References
+Data source for spam and ham: https://spamassassin.apache.org/old/publiccorpus/
+
+Model code: https://rpubs.com/anrcarson/224311
+
+##Useful links
+How to load data for text mining:
+https://stackoverflow.com/questions/7927367/r-text-file-and-text-mining-how-to-load-data
+
+Dealing with emojis: 
+https://stackoverflow.com/questions/9637278/r-tm-package-invalid-input-in-utf8towcs
+
+How to untar files in R:
+https://stackoverflow.com/questions/7151145/unzip-a-tar-gz-file-in-r
+
+Troubleshooting:
+https://stackoverflow.com/questions/47135684/termdocumentmatrix-not-working-on-corpus
+

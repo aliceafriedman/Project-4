@@ -1,19 +1,257 @@
 ---
-title: 'Project 4: Spam Filter'
+title: "Classifying Emails as Ham or Spam"
+subtitle: "DATA607 Project 4"
 author: "Alice Friedman"
-date: "10/31/2018"
+date: "November 3, 2018"
 output: 
   html_document:
-    theme: lumen
-    toc: true
-    toc_float: true
+    theme: yeti
+    toc: TRUE
+    toc_float: TRUE
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+remove(list=ls())
+```
+  
+#Overview
+The assigned task is to develop a model or set of models, train them to classify a corpus of emails as either "ham" or "spam," and then evaluate the results.
+
+In order to to this, we will:
+
+1. Download and untar a document set from the Apache Spam Assasin library
+
+2. Use the ```tm``` package to create a "corpus", perform some light data cleaning, and create a Document Term Matrix
+
+3. Use ```RTextTools``` to create a container, train a model, and evaluate the results.
+
+#Part 1: Creating a document set
+  
+We will first use some basic web scraping to download and untar the source files from the <a href="https://spamassassin.apache.org/old/publiccorpus/" target="_blank">Apache Spam Assassin</a> website.
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(XML)
+library(rvest)
+library(RCurl)
+library(stringr)
 ```
 
-#Setup
+##Step 1: Scrape web to create list of files to download
 ```{r}
-library(tm)
+url <- "https://spamassassin.apache.org/old/publiccorpus/"
+
+https_doc <- getURLContent(url) #necessary to use getURL from RCurl because of https
+
+links <- getHTMLLinks(https_doc) #scrape url for links
+
+filenames <- links[str_detect(links, ".tar.bz2")] #store links as file names, limiting results to those of interest
+
+filenames_list <- as.list(filenames) #convert to list
 ```
+
+##Step 2: Create function and run to download multiple CSVs from URL list
+This program will not download files if they already exist in the specified folder
+
+```{r}
+#create function
+download <- function(filename, baseurl, folder) {
+  dir.create(folder, showWarnings = FALSE)
+  fileurl <- str_c(baseurl, filename)
+  if(!file.exists(str_c(folder, "/", filename))) {
+    download.file(fileurl, 
+                  destfile = str_c(folder, "/", filename))
+    Sys.sleep(1)
+  }
+}
+
+library(plyr)
+setwd('~/Documents/GitHub/DATA607_Proj4') #set working drive
+
+if(!dir.exists("data/emailDownloads")){
+  dir.create("data/emailDownloads")
+}
+
+#run function over filenames_list generated from web scrape
+l_ply(filenames_list, download, 
+      baseurl = url,
+      folder = "data/emailDownloads"
+)
+```
+
+
+##Step 4: Create and run function to untar files
+This function will create a directory based on the file name, checking first to see if this directory already exists. It takes the argument "inFolder" so that it can be used on a different file set if downloads are stored in different places.
+```{r}
+setwd('~/Documents/GitHub/DATA607_Proj4/data') #set working drive to data folder 
+downloadList <- list.files("emailDownloads") #create list of files to untar
+folderNames <- str_remove(downloadList, ".tar.bz2") #create folder name lists based on file names
+
+extractToFolder <- function(file, inFolder){
+ toFolder <- str_remove(file, ".tar.bz2")
+ if(!dir.exists(toFolder)){ #this should only extract new files 
+ fullpath <- paste0(inFolder, "/", file) 
+ untar(fullpath, exdir = toFolder)  
+ }
+}
+
+l_ply(downloadList, extractToFolder, inFolder = "data/emailDownloads")
+
+#Optional:
+#unlink("~/Documents/GitHub/DATA607_Proj4/data/emailDownloads", recursive = TRUE) #now we can delete the folder with the tarred files
+
+```
+#Part 2: Create and clean a "corpus" using tm
+Since there are thousands of emails to choose from, we will choose just a few to create our corpus.
+
+```{r}
+setwd('~/Documents/GitHub/DATA607_Proj4/data') #set working drive to data folder 
+#Create a list of files in the folders
+folders <- c(
+  "20021010_easy_ham/easy_ham/", 
+  "20021010_hard_ham/hard_ham", 
+  "20050311_spam_2/spam_2")
+
+email_list <- list.files(folders, full.names = TRUE)
+
+#Create a random sample of 1000
+set.seed(123)
+email_list <- sample(email_list, 1000)
+
+library(tm)
+
+tmp <- readLines(email_list[[1]])
+tmp <- str_c(tmp, collapse = " ")
+tmp <- str_replace_all(tmp, pattern = "[[:punct:]]", replacement = " ")
+tmp <- tolower(tmp)
+email <- tmp
+spam <- if(str_detect(email_list[[1]], "spam")) {"spam"} else {"ham"}
+spam_labels <- spam
+corpus <- VCorpus(VectorSource(email))
+```
+
+
+##Create for loop to add remaining files to the corpus
+```{r}
+setwd('~/Documents/GitHub/DATA607_Proj4/data') #set working drive to data folder 
+
+for (i in 2:length(email_list)){
+  tmp <- readLines(email_list[[i]])
+  tmp <- str_c(tmp, collapse = " ")
+  tmp <- str_replace_all(tmp, pattern = "[[:punct:]]", replacement = " ")
+  tmp <- tolower(tmp)
+  email <- tmp
+  spam <- if(str_detect(email_list[[i]], "spam")) {"spam"} else {"ham"}
+  tmp_corpus <- VCorpus(VectorSource(email))
+  corpus <- c(corpus, tmp_corpus)
+  spam_labels <- c(spam_labels, spam) #because tm map will strip data, I'm instead making a list of labels
+}
+```
+###A note on data cleaning choices
+Many of the examples in the book and on the web perform a step to identify the email body and to remove html tags before performing a classification based on the body alone. I suspect that the header information as well as the presence or absence of html within the email is itself a useful indicator of whether a message is spam, so I have left both in my corpus.
+```{r}
+#Clean data
+corpus <- tm_map(corpus, function(x) iconv(x, to='UTF-8-MAC', sub='byte')) #removes weird characters
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, words = stopwords("en"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+```
+
+What's the mix of ham vs. spam in our corpus?
+```{r}
+library(kableExtra)
+library(scales)
+library(dplyr)
+percSpam <- as.data.frame(prop.table(table(spam_labels)))
+percSpam %>% 
+  rename("Type" = spam_labels) %>% 
+  transform(Freq = percent(percSpam$Freq)) %>%  
+  kable(caption = "How much of our corpus is spam?") %>% kable_styling(bootstrap_options = "basic")
+```
+
+Create Document-Term Matrix
+```{r}
+dtm <- DocumentTermMatrix(corpus)
+dtm <- removeSparseTerms(dtm, 1-(10/length(corpus)))
+dtm
+```
+
+#Part 3: Create, train, and test a model
+With a very few lines of code, we can create, train, and test a varirty of models using the ```RTextTools``` package.
+
+##Step 1: Create a "container"
+```{r}
+library(RTextTools)
+
+N <- 800
+end <- length(spam_labels) 
+container <-create_container(dtm, 
+                             labels = spam_labels, 
+                             trainSize = 1:N, 
+                             testSize = (N+1):end, 
+                             virgin = FALSE)
+```
+
+##Step 2: Train each model type
+```{r}
+maxEntropy_model <- train_model(container, "MAXENT")
+svm_model <- train_model(container, "SVM")
+randomForest_model <- train_model(container, "TREE")
+```
+
+##Step 3: Collect output from each model
+```{r}
+maxEntropy_out <- classify_model(container, maxEntropy_model)
+svm_out <- classify_model(container, svm_model)
+randomForest_out <- classify_model(container, randomForest_model)
+```
+
+
+#Conclusion
+
+```{r}
+results <- data.frame(correct_label = spam_labels[(N+1):end],
+                         maxEntropy = as.character(maxEntropy_out[,1]),
+                         svm = as.character(svm_out[,1]),
+                         randomForest = as.character(randomForest_out[,1]))
+
+SVM <- as.data.frame(prop.table(table(results$correct_label == results$svm)))
+SVM <- sapply(SVM[2], percent)
+
+MaxEntropy <- as.data.frame(prop.table(table(results$correct_label == results$maxEntropy)))
+MaxEntropy <- sapply(MaxEntropy[2], percent) 
+
+RandomForest <- as.data.frame(prop.table(table(results$correct_label == results$randomForest)))
+RandomForest <- sapply(RandomForest[2], percent)
+
+
+Summary <- data.frame(SVM, MaxEntropy, RandomForest, row.names = c("Error", "Correctly Classified")) 
+names(Summary) <- c("SVM", "Max Entropy", "Random Forest")
+```
+
+###Accuracy of Three Model Types in Evaluating Ham vs. Spam
+```{r Summary, echo = FALSE}
+Summary %>% kable() %>% kable_styling(bootstrap_options = "basic")
+```
+
+
+All three models perform exceptionally well, with the Max Entropy model slightly outstripping the other two. 
+
+
+#References
+Chapter 10, <a href="http://www.r-datacollection.com/" target="_blank"><i>Automated Data Collection in R</i></a>
+
+Data source for spam and ham: https://spamassassin.apache.org/old/publiccorpus/
+
+##Useful links
+How to untar files in R:
+https://stackoverflow.com/questions/7151145/unzip-a-tar-gz-file-in-r
+
+How to load data for text mining:
+https://stackoverflow.com/questions/7927367/r-text-file-and-text-mining-how-to-load-data
+
+Dealing with emojis: 
+https://stackoverflow.com/questions/9637278/r-tm-package-invalid-input-in-utf8towcs
+
+Troubleshooting:
+https://stackoverflow.com/questions/47135684/termdocumentmatrix-not-working-on-corpus
